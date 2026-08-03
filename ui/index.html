@@ -94,6 +94,9 @@
         <div><dt>Buffered (offline)</dt><dd id="m-queued">—</dd></div>
         <div><dt>Last error</dt><dd id="m-lasterror" class="err">—</dd></div>
       </dl>
+      <h2 style="margin-top:14px">AURORA HANDSHAKE</h2>
+      <div class="banner red" id="aurora-failed" hidden></div>
+      <ol class="stage-list" id="aurora-stages"></ol>
       <label class="switch">
         <input type="checkbox" id="offline-toggle" />
         OFFLINE MODE — ignore Aurora, drone only
@@ -149,6 +152,8 @@
         <div><dt>Aircraft</dt><dd id="a-aircraft">—</dd></div>
         <div><dt>Forwarding</dt><dd id="a-fwd">—</dd></div>
       </dl>
+      <div class="banner red" id="aurora-failed2" hidden></div>
+      <ol class="stage-list" id="aurora-stages2"></ol>
       <!-- Primary registration: sign in via the Aurora website (device-authorization). -->
       <div id="signin-block">
         <label>Aurora server URL
