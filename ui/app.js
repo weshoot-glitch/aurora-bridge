@@ -195,6 +195,65 @@ function renderPhaseStrip(d, a) {
   });
 }
 
+/* ---------- Aurora handshake stage list ----------
+   Drone-side stages are derived from live drone state; Aurora-side stages come
+   from the core's stage machine. Never a bare "CONNECTING". */
+function buildStageRows(d, a, n) {
+  const rows = [];
+  const droneDone = (cond, active, label, detail) => rows.push({
+    status: cond ? "done" : active ? "active" : "pending", label, detail: detail || null,
+  });
+  droneDone(n.discovered.length > 0 || d.activePort !== null, d.scanning, "Network discovered",
+    n.discovered.length > 0 ? `${n.discovered.length} device(s) sending traffic` : d.scanning ? "listening on UDP ports…" : "press CONNECT to search");
+  droneDone(d.lastHeartbeatAt !== null, d.scanning, "MAVLink heartbeat received",
+    d.activePort !== null ? `port ${d.activePort}` : null);
+  droneDone(d.vehicle.sysId !== null, d.lastHeartbeatAt !== null, "Drone identified",
+    d.vehicle.sysId !== null ? `SysID ${d.vehicle.sysId}${d.vehicle.vehicleType ? " · " + d.vehicle.vehicleType : ""}` : null);
+  for (const st of a.stages || []) rows.push(st);
+  return rows;
+}
+
+const STAGE_ICON = { done: "✓", active: "▸", failed: "✗", pending: "·" };
+
+function renderStages(listId, bannerId, d, a, n) {
+  const list = $(listId);
+  if (!list) return;
+  list.innerHTML = "";
+  for (const row of buildStageRows(d, a, n)) {
+    const li = document.createElement("li");
+    li.className = `stage-${row.status}`;
+    const icon = document.createElement("span");
+    icon.className = "stage-icon";
+    icon.textContent = STAGE_ICON[row.status] || "·";
+    const label = document.createElement("span");
+    label.textContent = row.label + (row.status === "active" ? "…" : "");
+    li.append(icon, label);
+    if (row.detail) {
+      const det = document.createElement("span");
+      det.className = "stage-detail";
+      det.textContent = ` — ${row.detail}`;
+      li.appendChild(det);
+    }
+    list.appendChild(li);
+  }
+  const banner = $(bannerId);
+  if (a.failureReason) {
+    banner.textContent = `FAILED — Reason: ${a.failureReason}`;
+    banner.hidden = false;
+  } else {
+    banner.hidden = true;
+  }
+}
+
+function auroraBigLabel(a) {
+  if (a.failureReason) return "FAILED";
+  if (a.status === "connecting") {
+    const active = (a.stages || []).find((s) => s.status === "active");
+    return active ? active.label.toUpperCase() + "…" : "STARTING HANDSHAKE…";
+  }
+  return AURORA_LABEL[a.status];
+}
+
 function render() {
   if (!state) return;
   const d = state.drone, a = state.aurora, v = d.vehicle, n = state.network, pm = d.monitor;
@@ -297,7 +356,9 @@ function render() {
   $("m-streams").textContent = d.streamsRequested ? "YES (4 Hz)" : "—";
 
   $("m-server").textContent = fmt(a.serverUrl);
-  $("m-aurora-status").textContent = AURORA_LABEL[a.status];
+  $("m-aurora-status").textContent = auroraBigLabel(a);
+  renderStages("aurora-stages", "aurora-failed", d, a, n);
+  renderStages("aurora-stages2", "aurora-failed2", d, a, n);
   $("m-auth").textContent = a.paired ? "PAIRED" : "NOT PAIRED";
   $("m-aircraft").textContent = fmt(a.aircraftId);
   $("m-expected-sysid").textContent = fmt(a.expectedSysId);
@@ -314,8 +375,8 @@ function render() {
   bigD.textContent = d.status === "connected" ? "CONNECTED" : d.scanning ? "SEARCHING…" : "DISCONNECTED";
   bigD.className = "status-big " + (d.status === "connected" ? "green" : d.scanning ? "yellow" : "red");
   const bigA = $("big-aurora-status");
-  bigA.textContent = AURORA_LABEL[a.status];
-  bigA.className = "status-big " + AURORA_LAMP[a.status];
+  bigA.textContent = auroraBigLabel(a);
+  bigA.className = "status-big " + (a.failureReason ? "red" : AURORA_LAMP[a.status]);
 
   $("v-type").textContent = fmt(v.vehicleType) + (v.autopilot ? ` · ${v.autopilot}` : "");
   $("v-sysid").textContent = fmt(v.sysId);
