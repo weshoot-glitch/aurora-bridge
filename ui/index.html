@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Aurora Bridge</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <div class="brand">AURORA BRIDGE <span class="ver">V4</span></div>
+  <nav>
+    <button id="tab-manager" class="tab active">CONNECTION MANAGER</button>
+    <button id="tab-main" class="tab">MAIN</button>
+  </nav>
+</header>
+
+<!-- Update banner (hidden unless a strictly newer release is published) -->
+<section class="banner" id="update-banner" hidden>
+  <span id="update-text"></span>
+  <button id="btn-update-download" class="small">DOWNLOAD</button>
+  <button id="btn-update-later" class="small">LATER</button>
+</section>
+
+<!-- ============ CONNECTION MANAGER (first screen) ============ -->
+<main id="page-manager" class="page">
+  <section class="banner" id="failure-banner">STARTING…</section>
+
+  <ol class="phase-strip" id="phase-strip">
+    <li data-phase="searching">Searching</li>
+    <li data-phase="heartbeat_found">Heartbeat Found</li>
+    <li data-phase="vehicle_connected">Vehicle Connected</li>
+    <li data-phase="telemetry_active">Telemetry Active</li>
+    <li data-phase="aurora_connected">Aurora Connected</li>
+    <li data-phase="forwarding">Forwarding</li>
+  </ol>
+
+  <div class="grid">
+    <section class="card">
+      <h2>NETWORK</h2>
+      <dl>
+        <div><dt>PC</dt><dd id="n-pc">—</dd></div>
+        <div><dt>Subnet</dt><dd id="n-subnet">—</dd></div>
+        <div><dt>Gateway</dt><dd id="n-gateway">—</dd></div>
+        <div><dt>Adapter</dt><dd id="n-adapter">—</dd></div>
+        <div><dt>Connection type</dt><dd id="n-type">—</dd></div>
+      </dl>
+      <h2 style="margin-top:14px">DISCOVERED DEVICES</h2>
+      <table id="device-table">
+        <thead><tr><th>DEVICE</th><th>PROTOCOL</th><th>PORT</th><th>MAVLINK</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="note" id="no-devices">No devices sending traffic yet.</p>
+    </section>
+
+    <section class="card">
+      <h2>MAVLINK HEALTH</h2>
+      <table id="health-table"><tbody></tbody></table>
+      <h2 style="margin-top:14px">PACKET MONITOR</h2>
+      <dl>
+        <div><dt>Packets / sec</dt><dd id="pm-pps">—</dd></div>
+        <div><dt>Dropped packets</dt><dd id="pm-dropped">—</dd></div>
+        <div><dt>Heartbeat rate</dt><dd id="pm-hbrate">—</dd></div>
+        <div><dt>Latency</dt><dd id="pm-latency">—</dd></div>
+        <div><dt>Last packet</dt><dd id="pm-lastpkt">—</dd></div>
+      </dl>
+    </section>
+    <section class="card">
+      <h2><span class="lamp" id="lamp-drone"></span> DRONE — MAVLINK (UDP)</h2>
+      <table id="udp-table">
+        <thead><tr><th>PORT</th><th>STATE</th><th>PACKETS</th><th>HEARTBEAT</th><th>SOURCE</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <dl>
+        <div><dt>Status</dt><dd id="m-drone-status">—</dd></div>
+        <div><dt>Active port</dt><dd id="m-active-port">—</dd></div>
+        <div><dt>Source IP</dt><dd id="m-source">—</dd></div>
+        <div><dt>System / Component ID</dt><dd id="m-sysid">—</dd></div>
+        <div><dt>Vehicle type</dt><dd id="m-vtype">—</dd></div>
+        <div><dt>Packets / sec</dt><dd id="m-pps">—</dd></div>
+        <div><dt>Streams requested</dt><dd id="m-streams">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2><span class="lamp" id="lamp-aurora"></span> AURORA</h2>
+      <dl>
+        <div><dt>Server</dt><dd id="m-server">—</dd></div>
+        <div><dt>Connection</dt><dd id="m-aurora-status">—</dd></div>
+        <div><dt>Authentication</dt><dd id="m-auth">—</dd></div>
+        <div><dt>Aircraft ID</dt><dd id="m-aircraft">—</dd></div>
+        <div><dt>Expected SysID</dt><dd id="m-expected-sysid">—</dd></div>
+        <div><dt>Frames forwarded</dt><dd id="m-forwarded">—</dd></div>
+        <div><dt>Buffered (offline)</dt><dd id="m-queued">—</dd></div>
+        <div><dt>Last error</dt><dd id="m-lasterror" class="err">—</dd></div>
+      </dl>
+      <label class="switch">
+        <input type="checkbox" id="offline-toggle" />
+        OFFLINE MODE — ignore Aurora, drone only
+      </label>
+      <p class="note" id="plaintext-warning" hidden>⚠ Pairing token is stored WITHOUT OS encryption on this machine.</p>
+    </section>
+
+    <section class="card wide">
+      <h2>CONNECTION TESTS</h2>
+      <div class="row">
+        <button id="btn-test-all" class="big secondary">TEST CONNECTIONS</button>
+        <button id="btn-export" class="secondary">EXPORT DIAGNOSTICS</button>
+        <span id="export-path" class="note"></span>
+      </div>
+      <table id="test-table">
+        <tbody></tbody>
+      </table>
+      <p class="note">Telemetry travels to Aurora over HTTPS. This bridge has no WebSocket pathway — there is deliberately no WebSocket test.</p>
+    </section>
+  </div>
+</main>
+
+<!-- ============ MAIN WINDOW ============ -->
+<main id="page-main" class="page" hidden>
+  <div class="grid">
+    <section class="card">
+      <h2><span class="lamp" id="lamp-drone2"></span> DRONE CONNECTION</h2>
+      <div class="status-big" id="big-drone-status">—</div>
+      <dl>
+        <div><dt>Vehicle</dt><dd id="v-type">—</dd></div>
+        <div><dt>System ID</dt><dd id="v-sysid">—</dd></div>
+        <div><dt>Flight mode</dt><dd id="v-mode">—</dd></div>
+        <div><dt>Armed</dt><dd id="v-armed">—</dd></div>
+        <div><dt>Battery</dt><dd id="v-batt">—</dd></div>
+        <div><dt>GPS</dt><dd id="v-gps">—</dd></div>
+        <div><dt>Position</dt><dd id="v-pos">—</dd></div>
+        <div><dt>Altitude (rel)</dt><dd id="v-alt">—</dd></div>
+        <div><dt>Ground speed</dt><dd id="v-gspd">—</dd></div>
+        <div><dt>Heading</dt><dd id="v-hdg">—</dd></div>
+        <div><dt>Packet rate</dt><dd id="v-pps">—</dd></div>
+      </dl>
+      <div class="row">
+        <button id="btn-connect" class="big">CONNECT</button>
+        <button id="btn-disconnect" class="big danger" hidden>DISCONNECT</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span class="lamp" id="lamp-aurora2"></span> AURORA CONNECTION</h2>
+      <div class="status-big" id="big-aurora-status">—</div>
+      <dl>
+        <div><dt>Authenticated</dt><dd id="a-auth">—</dd></div>
+        <div><dt>Aircraft</dt><dd id="a-aircraft">—</dd></div>
+        <div><dt>Forwarding</dt><dd id="a-fwd">—</dd></div>
+      </dl>
+      <!-- Primary registration: sign in via the Aurora website (device-authorization). -->
+      <div id="signin-block">
+        <label>Aurora server URL
+          <input id="signin-url" type="url" placeholder="https://aurorauavsystems.com" />
+        </label>
+        <div class="row">
+          <button type="button" id="btn-signin" class="big">SIGN IN TO AURORA</button>
+        </div>
+        <div id="signin-wait" hidden>
+          <p class="note">Approve this Bridge in the browser window that just opened.
+            If it didn't open, go to <span id="signin-verify-url"></span> and enter:</p>
+          <div class="status-big" id="signin-code">—</div>
+          <p class="note" id="signin-status">Waiting for approval…</p>
+          <div class="row"><button type="button" id="btn-signin-cancel" class="secondary">CANCEL</button></div>
+        </div>
+        <p class="note err" id="signin-error" hidden></p>
+      </div>
+      <!-- Admin fallback: manager-issued one-time pairing code. -->
+      <details id="pair-advanced">
+        <summary class="note">Advanced: register with a pairing code instead</summary>
+        <form id="pair-form">
+          <label>Aurora server URL
+            <input id="pair-url" type="url" placeholder="https://aurorauavsystems.com" required />
+          </label>
+          <label>Pairing code (from Aurora → Controllers)
+            <input id="pair-code" type="text" placeholder="12-ABC123" autocomplete="off" required />
+          </label>
+          <div class="row">
+            <button type="submit" id="btn-login" class="big secondary">LOGIN</button>
+            <button type="button" id="btn-test-aurora" class="secondary">TEST CONNECTION</button>
+            <button type="button" id="btn-unpair" class="secondary danger" hidden>UNPAIR</button>
+          </div>
+          <p class="note err" id="pair-error" hidden></p>
+        </form>
+      </details>
+    </section>
+
+    <section class="card wide">
+      <h2>LOG</h2>
+      <pre id="log-window"></pre>
+    </section>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
