@@ -116,3 +116,14 @@ form input {
 .log-warn { color: var(--yellow); }
 .log-error { color: var(--red); }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+/* Aurora handshake stage list */
+.stage-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+.stage-list li { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+.stage-icon { width: 14px; text-align: center; flex: none; }
+.stage-done { color: var(--green, #38d17c); }
+.stage-active { color: var(--yellow, #e8c04a); }
+.stage-failed { color: var(--red, #ff5c5c); font-weight: 600; }
+.stage-pending { color: var(--muted, #6a7484); }
+.stage-detail { color: var(--muted, #6a7484); font-weight: 400; }
+.banner.red { background: rgba(255,92,92,.12); color: var(--red, #ff5c5c); border: 1px solid rgba(255,92,92,.4); }
