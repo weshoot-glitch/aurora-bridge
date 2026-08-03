@@ -1,0 +1,67 @@
+{
+  "name": "aurora-bridge-desktop",
+  "productName": "Aurora Bridge",
+  "version": "4.0.0",
+  "description": "Aurora Bridge V4 — connects a MAVLink drone (UDP) to Aurora. Drone link and Aurora link are fully independent.",
+  "main": "dist/electron/main.js",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-ui.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev:headless": "tsx src/dev/headless.ts",
+    "sim": "tsx src/dev/simulator.ts",
+    "start": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "mavlink-mappings": "1.0.22-20260311",
+    "node-mavlink": "^2.3.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  },
+  "build": {
+    "appId": "com.aurora.bridge.desktop",
+    "productName": "Aurora Bridge",
+    "files": [
+      "dist/**/*",
+      "ui/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aurora Bridge",
+      "artifactName": "AuroraBridgeSetup.exe",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "AuroraBridge-portable.exe"
+    },
+    "directories": {
+      "output": "release"
+    }
+  },
+  "overrides": {
+    "tar": "^7.4.3"
+  }
+}
