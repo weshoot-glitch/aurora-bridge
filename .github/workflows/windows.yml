@@ -36,7 +36,9 @@ jobs:
           }
       - run: npm run typecheck
       - run: npm test
-      - run: npm run dist:win
+      # --publish never: the release step below publishes; electron-builder
+      # must not try to publish on tag builds itself (it has no token).
+      - run: npm run dist:win -- --publish never
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
