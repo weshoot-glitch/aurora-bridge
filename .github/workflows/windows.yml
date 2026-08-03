@@ -22,6 +22,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # npm 10.9.x crashes mid-install on Windows runners ("Exit handler never
+      # called"); pin the previous stable npm before installing.
+      - run: npm install -g npm@10.8.2
       # npm ci hits a known npm-on-Windows crash ("Exit handler never called");
       # npm install from the committed lockfile is the reliable path here.
       - run: npm install --no-audit --no-fund
