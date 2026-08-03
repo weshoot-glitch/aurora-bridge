@@ -28,15 +28,21 @@ export class BridgeLog {
     return s;
   }
 
-  log(category: LogLine["category"], message: string, level: LogLine["level"] = "info"): void {
+  log(
+    category: LogLine["category"],
+    message: string,
+    level: LogLine["level"] = "info",
+    opts?: { fileOnly?: boolean },
+  ): void {
     const line: LogLine = { ts: Date.now(), level, category, message };
-    this.lines.push(line);
-    if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
     const text = `${new Date(line.ts).toISOString()} [${level.toUpperCase()}] ${message}\n`;
     this.file("bridge.log").write(text);
     if (category === "drone") this.file("mavlink.log").write(text);
     if (category === "aurora") this.file("connection.log").write(text);
     if (category === "network") this.file("network.log").write(text);
+    if (opts?.fileOnly) return; // full wire trace goes to disk without flooding the UI log window
+    this.lines.push(line);
+    if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
     for (const l of this.listeners) l(line);
   }
 
