@@ -1,7 +1,7 @@
 {
   "name": "aurora-bridge-desktop",
   "productName": "Aurora Bridge",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "Aurora Bridge V4 — connects a MAVLink drone (UDP) to Aurora. Drone link and Aurora link are fully independent.",
   "main": "dist/electron/main.js",
   "private": true,
