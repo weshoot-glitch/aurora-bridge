@@ -25,6 +25,10 @@ jobs:
       # npm ci hits a known npm-on-Windows crash ("Exit handler never called");
       # npm install from the committed lockfile is the reliable path here.
       - run: npm install --no-audit --no-fund
+      - name: Show npm debug log on failure
+        if: failure()
+        shell: pwsh
+        run: Get-ChildItem C:\npm\cache\_logs\*.log | ForEach-Object { Get-Content $_ | Select-Object -Last 200 }
       - run: npm run typecheck
       - run: npm test
       - run: npm run dist:win
