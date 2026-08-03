@@ -116,8 +116,15 @@ export interface DroneLinkState {
   monitor: PacketMonitor;
 }
 
+import type { AuroraStage } from "./handshake";
+import { freshStages } from "./handshake";
+
 export interface AuroraLinkState {
   status: AuroraStatus;
+  /** step-by-step handshake — the UI renders THIS, never a bare "CONNECTING" */
+  stages: AuroraStage[];
+  /** set the instant any stage fails; cleared only when a retry succeeds */
+  failureReason: string | null;
   /** operator-controlled: when true the bridge does not talk to Aurora at all */
   offlineMode: boolean;
   paired: boolean;
@@ -202,6 +209,8 @@ export class BridgeStore {
       },
       aurora: {
         status: "not_paired",
+        stages: freshStages(),
+        failureReason: null,
         offlineMode: false,
         paired: false,
         serverUrl: null,
