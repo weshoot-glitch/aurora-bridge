@@ -10,7 +10,7 @@
  */
 
 /** "owner/repo" of the published Aurora Bridge releases. Empty = check disabled. */
-export const RELEASE_REPO = "";
+export const RELEASE_REPO = "weshoot-glitch/aurora-bridge";
 
 export interface UpdateInfo {
   currentVersion: string;
