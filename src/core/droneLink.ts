@@ -25,6 +25,7 @@ import type { BridgeStore, VehicleState, HealthVerdict, MavlinkHealth } from "./
 import { EMPTY_VEHICLE, WAITING_HEALTH, EMPTY_MONITOR } from "./state";
 import type { BridgeLog } from "./log";
 import type { NetworkMonitor } from "./network";
+import type { ActiveClientConfig } from "./udpSettings";
 
 export const DEFAULT_UDP_PORTS = [14540, 14550, 14551, 14552, 14555, 5760];
 
@@ -106,11 +107,17 @@ export class DroneLink {
   private lastLatencyMs: number | null = null;
   private timesyncTick = 0;
 
+  /* --- active UDP-client transport (UniRC7-style radios) --- */
+  private activeRuntime: PortRuntime | null = null;
+  private probeTick = 0;
+  private announcedProbing = false;
+
   constructor(
     private store: BridgeStore,
     private log: BridgeLog,
     private ports: number[] = DEFAULT_UDP_PORTS,
     private network: NetworkMonitor | null = null,
+    private activeClient: ActiveClientConfig | null = null,
   ) {}
 
   /** CONNECT: bind all ports and start searching. Never touches Aurora state. */
@@ -125,7 +132,87 @@ export class DroneLink {
     this.log.log("drone", "Searching local network for the drone...");
     this.log.log("drone", `Listening on UDP ports ${this.ports.join(", ")}.`);
     for (const port of this.ports) this.bindPort(port);
+    if (this.activeClient?.enabled) this.bindActiveClient(this.activeClient);
     this.watchdog = setInterval(() => this.tick(), 1000);
+  }
+
+  /**
+   * Active UDP client: bind a LOCAL client port (never the radio's own port),
+   * then send an outbound GCS heartbeat to remoteHost:remotePort so the radio
+   * learns our return address. Incoming datagrams flow through the exact same
+   * per-source framing pipelines as the passive ports — parsing, locking and
+   * health are completely unchanged.
+   */
+  private bindActiveClient(cfg: ActiveClientConfig): void {
+    // Never share a port with a passive listener — two UDP sockets on one
+    // port with reuseAddr get platform-dependent delivery (silent flakiness).
+    if (this.ports.includes(cfg.localPort)) {
+      const msg = `Local client port ${cfg.localPort} clashes with a passive listen port — active client not started. Choose a different local port.`;
+      this.store.update((s) => {
+        if (s.drone.activeClient) { s.drone.activeClient.bound = false; s.drone.activeClient.bindError = msg; }
+      });
+      this.log.log("drone", msg, "error");
+      return;
+    }
+    const socket = dgram.createSocket({ type: "udp4", reuseAddr: true });
+    const runtime: PortRuntime = { port: cfg.localPort, socket, pipelines: new Map() };
+    this.runtimes.push(runtime);
+    this.activeRuntime = runtime;
+    this.announcedProbing = false;
+
+    socket.on("message", (msg, rinfo) => {
+      if (!this.running || this.activeRuntime !== runtime) return; // stopped/replaced — inert
+      const fromRemote = rinfo.address === cfg.remoteHost && rinfo.port === cfg.remotePort;
+      this.store.update((s) => {
+        if (s.drone.activeClient) {
+          if (fromRemote) s.drone.activeClient.lastReplyAt = Date.now();
+        }
+      });
+      this.network?.reportSender(rinfo.address, cfg.localPort, false);
+      const source: Source = { address: rinfo.address, port: rinfo.port };
+      const pipeline = this.pipelineFor(runtime, source);
+      pipeline?.pass.write(msg);
+    });
+    socket.on("error", (err) => {
+      try { socket.close(); } catch { /* noop */ }
+      runtime.socket = null;
+      if (!this.running || this.activeRuntime !== runtime) return; // stopped/replaced — inert
+      this.activeRuntime = null;
+      this.store.update((s) => {
+        if (s.drone.activeClient) { s.drone.activeClient.bound = false; s.drone.activeClient.bindError = err.message; }
+      });
+      this.log.log("drone", `UDP client ${cfg.localPort}: ${err.message} — will retry in 5 s.`, "warn");
+    });
+    socket.bind(cfg.localPort, () => {
+      if (!this.running || this.activeRuntime !== runtime) return; // stopped/replaced — inert
+      this.store.update((s) => {
+        if (s.drone.activeClient) { s.drone.activeClient.bound = true; s.drone.activeClient.bindError = null; }
+      });
+      this.log.log("drone", `UDP client mode: local port ${cfg.localPort} → ${cfg.remoteHost}:${cfg.remotePort}. Sending outbound heartbeat to establish the return path.`);
+      this.sendProbe(cfg); // FIRST datagram is ours — this is what makes UniRC7-style radios answer
+    });
+  }
+
+  /** Outbound GCS heartbeat — establishes and refreshes the radio's return path. */
+  private sendProbe(cfg: ActiveClientConfig): void {
+    const socket = this.activeRuntime?.socket;
+    if (!socket) return;
+    try {
+      const hb = new minimal.Heartbeat();
+      hb.type = 6 as never; // MAV_TYPE_GCS — we identify honestly as a ground station
+      hb.autopilot = 8 as never; // MAV_AUTOPILOT_INVALID (GCS convention)
+      hb.systemStatus = 4 as never; // MAV_STATE_ACTIVE
+      const buf = this.protocol.serialize(hb, this.seq++ & 0xff);
+      socket.send(buf, cfg.remotePort, cfg.remoteHost);
+      this.store.update((s) => {
+        if (s.drone.activeClient) {
+          s.drone.activeClient.probesSent += 1;
+          s.drone.activeClient.lastProbeAt = Date.now();
+        }
+      });
+    } catch (err) {
+      this.log.log("drone", `UDP client heartbeat failed: ${(err as Error).message}`, "warn");
+    }
   }
 
   /** DISCONNECT: close everything, reset drone state honestly. */
@@ -139,6 +226,8 @@ export class DroneLink {
       r.pipelines.clear();
     }
     this.runtimes = [];
+    this.activeRuntime = null;
+    this.announcedProbing = false;
     this.packetTimes = [];
     this.lock = null;
     this.resetMonitors();
@@ -158,6 +247,10 @@ export class DroneLink {
       s.drone.monitor = { ...EMPTY_MONITOR };
       for (const p of s.drone.ports) {
         p.bound = false; p.bindError = null; p.heartbeatSeen = false;
+      }
+      if (s.drone.activeClient) {
+        s.drone.activeClient.bound = false;
+        s.drone.activeClient.bindError = null;
       }
     });
     this.log.log("drone", "Drone link stopped.");
@@ -182,6 +275,7 @@ export class DroneLink {
     this.runtimes.push(runtime);
 
     socket.on("message", (msg, rinfo) => {
+      if (!this.running) return; // stopped — a queued datagram must not mutate state
       this.store.update((s) => {
         const p = s.drone.ports.find((x) => x.port === port);
         if (p) {
@@ -196,15 +290,17 @@ export class DroneLink {
       pipeline?.pass.write(msg);
     });
     socket.on("error", (err) => {
+      try { socket.close(); } catch { /* noop */ }
+      runtime.socket = null;
+      if (!this.running) return; // stopped — inert
       this.store.update((s) => {
         const p = s.drone.ports.find((x) => x.port === port);
         if (p) { p.bound = false; p.bindError = err.message; }
       });
       this.log.log("drone", `UDP ${port}: ${err.message}`, "warn");
-      try { socket.close(); } catch { /* noop */ }
-      runtime.socket = null;
     });
     socket.bind(port, () => {
+      if (!this.running) return; // stopped before bind completed — inert
       this.store.update((s) => {
         const p = s.drone.ports.find((x) => x.port === port);
         if (p) { p.bound = true; p.bindError = null; }
@@ -418,6 +514,28 @@ export class DroneLink {
     const connected = st.status === "connected" && !stale;
 
     if (connected && this.lock && ++this.timesyncTick % 5 === 0) this.sendTimesync();
+
+    // Active UDP client: keep the return path alive with a 1 Hz outbound GCS
+    // heartbeat. This is also the RECONNECT mechanism — if the radio's network
+    // drops, the lock goes stale (handled below) and these ongoing probes make
+    // the radio resume sending to us the moment it is reachable again.
+    // Socket-level failure recovery: if the active socket died (interface
+    // error), retry the bind every 5 s so a returning network heals itself.
+    if (this.activeClient?.enabled && !this.activeRuntime && this.probeTick % 5 === 0) {
+      this.probeTick += 1;
+      this.bindActiveClient(this.activeClient);
+    }
+    if (this.activeClient?.enabled && this.activeRuntime?.socket) {
+      this.probeTick += 1;
+      this.sendProbe(this.activeClient);
+      const ac = this.store.state.drone.activeClient;
+      const answered = ac?.lastReplyAt !== null && ac?.lastReplyAt !== undefined;
+      if (!answered && !this.announcedProbing && this.probeTick >= 10) {
+        this.announcedProbing = true;
+        this.log.log("drone", `UDP client: no reply from ${this.activeClient.remoteHost}:${this.activeClient.remotePort} after 10 s — still sending heartbeats. Check the controller is on and this PC is on its network.`, "warn");
+      }
+      if (answered) this.announcedProbing = false;
+    }
 
     // Per-signal health: WAITING until first seen, PASS while fresh, FAILED once stale.
     const verdict = (lastSeen: number | null): HealthVerdict => {
