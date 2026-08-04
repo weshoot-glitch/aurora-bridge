@@ -19,7 +19,7 @@ import {
   freshStages, classifyHttpFailure, classifyException, type AuroraStageId,
 } from "./handshake";
 
-const APP_VERSION = "4.2.0";
+const APP_VERSION = "4.2.1";
 const HANDSHAKE_TIMEOUT_MS = 10000;
 const FORWARD_INTERVAL_MS = 1000;
 const HEALTH_INTERVAL_MS = 30000;
@@ -327,7 +327,7 @@ export class AuroraLink {
     this.setStage("aircraft_verified", "active");
     this.setStage("aircraft_verified", "done",
       meta.aircraftId !== null
-        ? `aircraft #${meta.aircraftId}${meta.expectedSysId !== null ? `, expected SysID ${meta.expectedSysId}` : ""}`
+        ? `aircraft #${meta.aircraftId} (cloud pairing record — not live telemetry)${meta.expectedSysId !== null ? `, expected SysID ${meta.expectedSysId}` : ""}`
         : "no specific aircraft bound — server routes by SysID");
 
     // 4) Contact Aurora Cloud — a real authenticated HTTPS round-trip.
