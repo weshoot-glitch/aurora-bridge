@@ -74,6 +74,30 @@ async function api(action, body) {
   } catch { /* offline or old server — no banner, never an error */ }
 })();
 
+/* ---------- active UDP client settings (UniRC7) ---------- */
+(async () => {
+  try {
+    const res = await fetch(`/api/drone/udp-settings`, { headers: { "X-Bridge-Auth": AUTH } });
+    const { config, defaults } = await res.json();
+    $("udp-enabled").checked = config.enabled === true;
+    $("udp-remote-host").value = config.remoteHost || defaults.remoteHost;
+    $("udp-remote-port").value = config.remotePort || defaults.remotePort;
+    $("udp-local-port").value = config.localPort || defaults.localPort;
+  } catch { /* old server — form stays blank */ }
+})();
+$("udp-client-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("udp-client-msg");
+  msg.textContent = "Saving…";
+  const result = await api("drone/udp-settings", {
+    enabled: $("udp-enabled").checked,
+    remoteHost: $("udp-remote-host").value.trim(),
+    remotePort: Number($("udp-remote-port").value),
+    localPort: Number($("udp-local-port").value),
+  });
+  msg.textContent = result.error ? result.error : "Saved — drone link restarted.";
+});
+
 /* ---------- sign-in registration (device-authorization) ---------- */
 let signinTimer = null;
 function stopSignin(msg) {
@@ -354,6 +378,24 @@ function render() {
   $("m-vtype").textContent = fmt(v.vehicleType);
   $("m-pps").textContent = fmt(d.packetsPerSecond);
   $("m-streams").textContent = d.streamsRequested ? "YES (4 Hz)" : "—";
+
+  /* active UDP client status */
+  const ac = d.activeClient;
+  if (ac) {
+    $("m-udp-client").textContent = ac.bindError
+      ? `BIND FAILED: ${ac.bindError}`
+      : ac.bound
+        ? `ACTIVE — local ${ac.localPort} → ${ac.remoteHost}:${ac.remotePort}`
+        : "STARTING…";
+    $("m-udp-probes").textContent = String(ac.probesSent);
+    $("m-udp-reply").textContent = ac.lastReplyAt
+      ? `${Math.max(0, Math.round((Date.now() - ac.lastReplyAt) / 1000))}s ago`
+      : "NO REPLY YET";
+  } else {
+    $("m-udp-client").textContent = "DISABLED";
+    $("m-udp-probes").textContent = "—";
+    $("m-udp-reply").textContent = "—";
+  }
 
   $("m-server").textContent = fmt(a.serverUrl);
   $("m-aurora-status").textContent = auroraBigLabel(a);
