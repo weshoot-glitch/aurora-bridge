@@ -11,12 +11,15 @@ import { AuroraLink } from "./auroraLink";
 import { Diagnostics } from "./diagnostics";
 import { TokenStore, Encryptor } from "./tokenStore";
 import { NetworkMonitor } from "./network";
+import { loadActiveClient, saveActiveClient, type ActiveClientConfig } from "./udpSettings";
 
 export interface BridgeOptions {
   dataDir?: string;
   ports?: number[];
   encryptor?: Encryptor | null;
   fetchFn?: typeof fetch;
+  /** override active UDP-client config (tests); default = persisted settings */
+  activeClient?: ActiveClientConfig | null;
 }
 
 export function defaultDataDir(): string {
@@ -29,23 +32,29 @@ export function defaultDataDir(): string {
 export class Bridge {
   readonly store: BridgeStore;
   readonly log: BridgeLog;
-  readonly drone: DroneLink;
+  drone: DroneLink;
+  private readonly ports: number[];
   readonly aurora: AuroraLink;
   readonly diagnostics: Diagnostics;
   readonly tokens: TokenStore;
   readonly network: NetworkMonitor;
   readonly dataDir: string;
   /** Running app version — used by the startup update check. */
-  readonly appVersion: string = "4.0.0";
+  readonly appVersion: string = "4.2.0";
+  activeClientConfig: ActiveClientConfig;
 
   constructor(opts: BridgeOptions = {}) {
     this.dataDir = opts.dataDir ?? defaultDataDir();
     const ports = opts.ports ?? DEFAULT_UDP_PORTS;
-    this.store = new BridgeStore(ports);
+    this.ports = ports;
+    this.activeClientConfig = opts.activeClient !== undefined
+      ? (opts.activeClient ?? { enabled: false, remoteHost: "", remotePort: 0, localPort: 0 })
+      : loadActiveClient(this.dataDir);
+    this.store = new BridgeStore(ports, this.activeClientConfig);
     this.log = new BridgeLog(path.join(this.dataDir, "logs"));
     this.tokens = new TokenStore(this.dataDir, opts.encryptor ?? null);
     this.network = new NetworkMonitor(this.store, this.log);
-    this.drone = new DroneLink(this.store, this.log, ports, this.network);
+    this.drone = new DroneLink(this.store, this.log, ports, this.network, this.activeClientConfig);
     this.aurora = new AuroraLink(this.store, this.log, this.tokens, opts.fetchFn ?? fetch);
     this.diagnostics = new Diagnostics(this.store, this.tokens, path.join(this.dataDir, "logs"), opts.fetchFn ?? fetch);
     this.log.log("system", "Aurora Bridge V4 started.");
@@ -58,6 +67,23 @@ export class Bridge {
     if (this.tokens.isPaired && !this.store.state.aurora.offlineMode) {
       this.aurora.startForwarding();
     }
+  }
+
+  /** Persist new active UDP-client settings and restart the drone link with them. */
+  applyActiveClient(config: ActiveClientConfig): void {
+    saveActiveClient(this.dataDir, config);
+    this.activeClientConfig = config;
+    this.drone.stop();
+    this.store.update((s) => {
+      s.drone.activeClient = config.enabled
+        ? { ...config, bound: false, bindError: null, probesSent: 0, lastProbeAt: null, lastReplyAt: null }
+        : null;
+    });
+    this.drone = new DroneLink(this.store, this.log, this.ports, this.network, config);
+    this.drone.start();
+    this.log.log("drone", config.enabled
+      ? `UDP client settings applied: local ${config.localPort} → ${config.remoteHost}:${config.remotePort}.`
+      : "UDP client mode disabled — passive listening only.");
   }
 
   shutdown(): void {
