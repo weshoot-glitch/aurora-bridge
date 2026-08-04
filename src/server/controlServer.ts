@@ -16,6 +16,7 @@ import * as crypto from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { Bridge } from "../core/bridge";
 import { checkForUpdate, type UpdateInfo } from "../core/updateCheck";
+import { validateActiveClient, DEFAULT_ACTIVE_CLIENT } from "../core/udpSettings";
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".css": "text/css", ".js": "text/javascript",
@@ -124,6 +125,20 @@ async function handle(
     }
     if (req.method === "POST" && action === "drone/connect") { bridge.drone.start(); return json(200, { ok: true }); }
     if (req.method === "POST" && action === "drone/disconnect") { bridge.drone.stop(); return json(200, { ok: true }); }
+    if (req.method === "GET" && action === "drone/udp-settings") {
+      return json(200, { config: bridge.activeClientConfig, defaults: DEFAULT_ACTIVE_CLIENT });
+    }
+    if (req.method === "POST" && action === "drone/udp-settings") {
+      const body = await readBody(req);
+      if (body.enabled !== true) {
+        bridge.applyActiveClient({ ...bridge.activeClientConfig, enabled: false });
+        return json(200, { ok: true, config: bridge.activeClientConfig });
+      }
+      const v = validateActiveClient(body as never);
+      if (!v.ok) return json(400, { error: v.error });
+      bridge.applyActiveClient({ ...v.config, enabled: true });
+      return json(200, { ok: true, config: v.config });
+    }
     if (req.method === "POST" && action === "aurora/pair") {
       const body = await readBody(req);
       if (typeof body.serverUrl !== "string" || !body.serverUrl) return json(400, { error: "serverUrl required" });
