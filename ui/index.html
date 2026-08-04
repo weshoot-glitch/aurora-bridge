@@ -80,6 +80,29 @@
         <div><dt>Packets / sec</dt><dd id="m-pps">—</dd></div>
         <div><dt>Streams requested</dt><dd id="m-streams">—</dd></div>
       </dl>
+      <h2 style="margin-top:14px">UDP CLIENT MODE (UniRC7)</h2>
+      <p class="hint">For radios that only answer the peer that contacts them first. The bridge sends an outbound heartbeat to the remote address to open the return path, then forwards MAVLink both ways and keeps retrying if the network drops.</p>
+      <form id="udp-client-form">
+        <label class="row" style="gap:6px"><input type="checkbox" id="udp-enabled" /> Enable active UDP client</label>
+        <label>Remote host
+          <input id="udp-remote-host" type="text" placeholder="192.168.144.20" />
+        </label>
+        <label>Remote port
+          <input id="udp-remote-port" type="number" min="1" max="65535" placeholder="19856" />
+        </label>
+        <label>Local client port (must differ from remote port)
+          <input id="udp-local-port" type="number" min="1024" max="65535" placeholder="14580" />
+        </label>
+        <div class="row">
+          <button type="submit" class="secondary">SAVE &amp; RECONNECT</button>
+          <span id="udp-client-msg" class="hint"></span>
+        </div>
+      </form>
+      <dl>
+        <div><dt>Client status</dt><dd id="m-udp-client">—</dd></div>
+        <div><dt>Heartbeats sent</dt><dd id="m-udp-probes">—</dd></div>
+        <div><dt>Last reply from remote</dt><dd id="m-udp-reply">—</dd></div>
+      </dl>
     </section>
 
     <section class="card">
