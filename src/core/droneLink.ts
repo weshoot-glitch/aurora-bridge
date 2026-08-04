@@ -109,6 +109,9 @@ export class DroneLink {
 
   /* --- active UDP-client transport (UniRC7-style radios) --- */
   private activeRuntime: PortRuntime | null = null;
+  /** Wire-trace counters for the active UDP client (debug logging only). */
+  private txTraceCount = 0;
+  private rxTraceCount = 0;
   private probeTick = 0;
   private announcedProbing = false;
 
@@ -163,6 +166,13 @@ export class DroneLink {
     socket.on("message", (msg, rinfo) => {
       if (!this.running || this.activeRuntime !== runtime) return; // stopped/replaced — inert
       const fromRemote = rinfo.address === cfg.remoteHost && rinfo.port === cfg.remotePort;
+      // Wire-level RX trace: first byte should be 0xFD (MAVLink2). Log the first
+      // datagrams verbosely, then thin out so a live stream doesn't flood the log.
+      this.rxTraceCount += 1;
+      if (this.rxTraceCount <= 20 || this.rxTraceCount % 200 === 0) {
+        const b0 = msg.length > 0 ? `0x${msg[0].toString(16).toUpperCase().padStart(2, "0")}` : "empty";
+        this.log.log("drone", `UDP RX #${this.rxTraceCount} from ${rinfo.address}:${rinfo.port} — ${msg.length} bytes, first byte ${b0}${b0 === "0xFD" ? " (MAVLink2)" : ""}.`);
+      }
       this.store.update((s) => {
         if (s.drone.activeClient) {
           if (fromRemote) s.drone.activeClient.lastReplyAt = Date.now();
@@ -188,7 +198,9 @@ export class DroneLink {
       this.store.update((s) => {
         if (s.drone.activeClient) { s.drone.activeClient.bound = true; s.drone.activeClient.bindError = null; }
       });
-      this.log.log("drone", `UDP client mode: local port ${cfg.localPort} → ${cfg.remoteHost}:${cfg.remotePort}. Sending outbound heartbeat to establish the return path.`);
+      let bound = `${cfg.localPort}`;
+      try { const a = socket.address(); bound = `${a.address}:${a.port}`; } catch { /* noop */ }
+      this.log.log("drone", `UDP client mode: socket bound on ${bound} → destination ${cfg.remoteHost}:${cfg.remotePort}. Sending outbound heartbeat to establish the return path.`);
       this.sendProbe(cfg); // FIRST datagram is ours — this is what makes UniRC7-style radios answer
     });
   }
@@ -203,7 +215,16 @@ export class DroneLink {
       hb.autopilot = 8 as never; // MAV_AUTOPILOT_INVALID (GCS convention)
       hb.systemStatus = 4 as never; // MAV_STATE_ACTIVE
       const buf = this.protocol.serialize(hb, this.seq++ & 0xff);
-      socket.send(buf, cfg.remotePort, cfg.remoteHost);
+      // Wire-level TX trace: the send callback proves the datagram actually left
+      // the socket. First probes logged verbosely, then thinned (1 Hz keep-alive).
+      const n = (this.txTraceCount += 1);
+      socket.send(buf, cfg.remotePort, cfg.remoteHost, (err) => {
+        if (err) {
+          this.log.log("drone", `UDP TX #${n} → ${cfg.remoteHost}:${cfg.remotePort} FAILED to leave the socket: ${err.message}`, "warn");
+        } else if (n <= 5 || n % 30 === 0) {
+          this.log.log("drone", `UDP TX #${n} → ${cfg.remoteHost}:${cfg.remotePort} (${buf.length}-byte GCS heartbeat) left the socket.`);
+        }
+      });
       this.store.update((s) => {
         if (s.drone.activeClient) {
           s.drone.activeClient.probesSent += 1;
