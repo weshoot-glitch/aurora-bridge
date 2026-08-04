@@ -40,7 +40,7 @@ export class Bridge {
   readonly network: NetworkMonitor;
   readonly dataDir: string;
   /** Running app version — used by the startup update check. */
-  readonly appVersion: string = "4.2.0";
+  readonly appVersion: string = "4.2.1";
   activeClientConfig: ActiveClientConfig;
 
   constructor(opts: BridgeOptions = {}) {
