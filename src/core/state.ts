@@ -97,12 +97,28 @@ export interface NetworkState {
   discovered: DiscoveredDevice[];
 }
 
+/** Live view of the active UDP-client transport (UniRC7-style radios). */
+export interface ActiveClientState {
+  enabled: boolean;
+  remoteHost: string;
+  remotePort: number;
+  localPort: number;
+  bound: boolean;
+  bindError: string | null;
+  probesSent: number;
+  lastProbeAt: number | null;
+  /** last packet received FROM the configured remote — proof of return path */
+  lastReplyAt: number | null;
+}
+
 export interface DroneLinkState {
   status: DroneStatus;
   phase: DronePhase;
   /** true while sockets are bound and scanning */
   scanning: boolean;
   ports: PortState[];
+  /** null when active-client mode is disabled */
+  activeClient: ActiveClientState | null;
   /** port + source the bridge locked onto after first valid heartbeat */
   activePort: number | null;
   sourceIp: number extends never ? never : string | null;
@@ -182,7 +198,7 @@ export class BridgeStore {
   private listeners = new Set<StateListener>();
   state: BridgeState;
 
-  constructor(ports: number[]) {
+  constructor(ports: number[], activeClient?: { enabled: boolean; remoteHost: string; remotePort: number; localPort: number }) {
     this.state = {
       drone: {
         status: "disconnected",
@@ -192,6 +208,12 @@ export class BridgeStore {
           port, bound: false, bindError: null, packetsSeen: 0,
           heartbeatSeen: false, lastSourceIp: null, lastSourcePort: null,
         })),
+        activeClient: activeClient?.enabled
+          ? {
+              ...activeClient, bound: false, bindError: null,
+              probesSent: 0, lastProbeAt: null, lastReplyAt: null,
+            }
+          : null,
         activePort: null,
         sourceIp: null,
         sourcePort: null,
