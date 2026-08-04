@@ -19,7 +19,7 @@ import {
   freshStages, classifyHttpFailure, classifyException, type AuroraStageId,
 } from "./handshake";
 
-const APP_VERSION = "4.1.0";
+const APP_VERSION = "4.2.0";
 const HANDSHAKE_TIMEOUT_MS = 10000;
 const FORWARD_INTERVAL_MS = 1000;
 const HEALTH_INTERVAL_MS = 30000;
