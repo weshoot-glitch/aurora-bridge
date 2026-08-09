@@ -327,7 +327,7 @@ describe("diagnostics", () => {
     const failingFetch: typeof fetch = async () => { throw new Error("no network"); };
     bridge = makeBridge(failingFetch);
     const results = await bridge.diagnostics.runAll();
-    expect(results.length).toBe(11);
+    expect(results.length).toBe(12);
     for (const r of results) {
       expect(typeof r.pass).toBe("boolean");
       expect(r.detail.length).toBeGreaterThan(5);
