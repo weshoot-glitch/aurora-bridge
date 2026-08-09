@@ -146,10 +146,13 @@ async function handle(
         serverUrl: body.serverUrl,
         pairingString: typeof body.pairingString === "string" ? body.pairingString : undefined,
       });
-      if (result.ok && !bridge.store.state.aurora.offlineMode) bridge.aurora.startForwarding();
+      if (result.ok && !bridge.store.state.aurora.offlineMode) {
+        bridge.aurora.startForwarding();
+        bridge.camera.start();
+      }
       return json(result.ok ? 200 : 400, result);
     }
-    if (req.method === "POST" && action === "aurora/unpair") { bridge.aurora.unpair(); return json(200, { ok: true }); }
+    if (req.method === "POST" && action === "aurora/unpair") { bridge.camera.stop(); bridge.aurora.unpair(); return json(200, { ok: true }); }
     if (req.method === "POST" && action === "aurora/signin/start") {
       const body = await readBody(req);
       if (typeof body.serverUrl !== "string" || !body.serverUrl) return json(400, { error: "serverUrl required" });
@@ -161,10 +164,14 @@ async function handle(
     }
     if (req.method === "POST" && action === "aurora/offline") {
       const body = await readBody(req);
-      bridge.aurora.setOfflineMode(body.offline === true);
+      const offline = body.offline === true;
+      bridge.aurora.setOfflineMode(offline);
+      // Camera relay follows Aurora offline mode — no cloud, no relay.
+      if (offline) bridge.camera.stop();
+      else if (bridge.tokens.isPaired) bridge.camera.start();
       return json(200, { ok: true });
     }
-    if (req.method === "POST" && action === "aurora/start") { bridge.aurora.startForwarding(); return json(200, { ok: true }); }
+    if (req.method === "POST" && action === "aurora/start") { bridge.aurora.startForwarding(); bridge.camera.start(); return json(200, { ok: true }); }
     if (req.method === "POST" && action === "tests/run") return json(200, { results: await bridge.diagnostics.runAll() });
     if (req.method === "POST" && action === "diagnostics/export") {
       const out = path.join(bridge.dataDir, `aurora-bridge-diagnostics-${Date.now()}.zip`);
