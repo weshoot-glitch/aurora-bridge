@@ -8,6 +8,7 @@ import { BridgeStore } from "./state";
 import { BridgeLog } from "./log";
 import { DroneLink, DEFAULT_UDP_PORTS } from "./droneLink";
 import { AuroraLink } from "./auroraLink";
+import { CameraRelay, type CameraRelayOptions } from "./cameraRelay";
 import { Diagnostics } from "./diagnostics";
 import { TokenStore, Encryptor } from "./tokenStore";
 import { NetworkMonitor } from "./network";
@@ -20,6 +21,8 @@ export interface BridgeOptions {
   fetchFn?: typeof fetch;
   /** override active UDP-client config (tests); default = persisted settings */
   activeClient?: ActiveClientConfig | null;
+  /** camera relay overrides (tests inject stub ffmpeg + TCP probe) */
+  camera?: CameraRelayOptions;
 }
 
 export function defaultDataDir(): string {
@@ -35,12 +38,13 @@ export class Bridge {
   drone: DroneLink;
   private readonly ports: number[];
   readonly aurora: AuroraLink;
+  readonly camera: CameraRelay;
   readonly diagnostics: Diagnostics;
   readonly tokens: TokenStore;
   readonly network: NetworkMonitor;
   readonly dataDir: string;
   /** Running app version — used by the startup update check. */
-  readonly appVersion: string = "4.2.1";
+  readonly appVersion: string = "4.3.0";
   activeClientConfig: ActiveClientConfig;
 
   constructor(opts: BridgeOptions = {}) {
@@ -56,6 +60,7 @@ export class Bridge {
     this.network = new NetworkMonitor(this.store, this.log);
     this.drone = new DroneLink(this.store, this.log, ports, this.network, this.activeClientConfig);
     this.aurora = new AuroraLink(this.store, this.log, this.tokens, opts.fetchFn ?? fetch);
+    this.camera = new CameraRelay(this.store, this.log, this.tokens, opts.fetchFn ?? fetch, opts.camera ?? {});
     this.diagnostics = new Diagnostics(this.store, this.tokens, path.join(this.dataDir, "logs"), opts.fetchFn ?? fetch);
     this.log.log("system", "Aurora Bridge V4 started.");
   }
@@ -66,6 +71,10 @@ export class Bridge {
     this.drone.start();
     if (this.tokens.isPaired && !this.store.state.aurora.offlineMode) {
       this.aurora.startForwarding();
+      // Camera relay is an independent capability: it self-gates on the Aurora
+      // link being authenticated + an assignment + reachability. Starting it
+      // here only begins assignment polling; the pipeline waits for the gate.
+      this.camera.start();
     }
   }
 
@@ -90,5 +99,6 @@ export class Bridge {
     this.network.stop();
     this.drone.stop();
     this.aurora.stopForwarding();
+    this.camera.stop();
   }
 }
