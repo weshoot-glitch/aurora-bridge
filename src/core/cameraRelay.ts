@@ -362,7 +362,14 @@ export class CameraRelay {
     this.log.log("camera", `Starting ffmpeg relay (${bin.source}) → HLS → cloud ingest.`);
     let child: ChildProcess;
     try {
-      child = spawn(bin.path, args, { stdio: ["ignore", "pipe", "pipe"] });
+      // Test stubs are node scripts; Windows cannot exec .mjs/.js directly,
+      // so run those through the current node binary. Real ffmpeg is a
+      // native executable and takes the direct path.
+      if (/\.(mjs|js)$/i.test(bin.path)) {
+        child = spawn(process.execPath, [bin.path, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+      } else {
+        child = spawn(bin.path, args, { stdio: ["ignore", "pipe", "pipe"] });
+      }
     } catch (err) {
       this.running = false;
       this.safeStop("rtsp_failed", `Could not launch ffmpeg: ${(err as Error).message}`);
