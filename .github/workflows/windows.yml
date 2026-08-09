@@ -36,6 +36,20 @@ jobs:
           }
       - run: npm run typecheck
       - run: npm test
+      # The camera relay needs ffmpeg at runtime; the binary is not committed.
+      # Download a pinned win64 build and place ffmpeg.exe where
+      # electron-builder's extraResources expects it (resources/ffmpeg/).
+      - name: Bundle ffmpeg (pinned win64 build)
+        shell: pwsh
+        run: |
+          $url = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.1-essentials_build.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip -MaximumRetryCount 3 -RetryIntervalSec 10
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp
+          $exe = Get-ChildItem -Recurse ffmpeg-tmp -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error "ffmpeg.exe not found in downloaded archive"; exit 1 }
+          Copy-Item $exe.FullName resources/ffmpeg/ffmpeg.exe
+          & resources/ffmpeg/ffmpeg.exe -version
+          if ($LASTEXITCODE -ne 0) { Write-Error "bundled ffmpeg failed to run"; exit 1 }
       # --publish never: the release step below publishes; electron-builder
       # must not try to publish on tag builds itself (it has no token).
       - run: npm run dist:win -- --publish never
