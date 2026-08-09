@@ -188,6 +188,28 @@ export class Diagnostics {
     return { id: "forwarding", label: "Forwarding", pass: false, detail: a.lastError ? `Last error: ${a.lastError}` : "No frame delivered in the last 10s" };
   }
 
+  /** Camera / Video Relay diagnostic — observes only, never changes state.
+   *  RTSP URL and publish key are never included (secrets stay redacted). */
+  testCamera(): TestResult {
+    const c = this.store.state.camera;
+    if (!c.ffmpegAvailable) {
+      return { id: "camera", label: "Camera Relay", pass: false, detail: `ffmpeg not available (${c.ffmpegSource}) — relay cannot run` };
+    }
+    if (!c.assigned) {
+      return { id: "camera", label: "Camera Relay", pass: false, detail: "No camera assigned to this aircraft in Aurora" };
+    }
+    const facts: string[] = [];
+    if (c.rtspReachable !== null) facts.push(`RTSP ${c.rtspReachable ? "reachable" : "unreachable"}`);
+    if (c.framesReceived > 0) facts.push(`${c.framesReceived} frames`);
+    if (c.media.width && c.media.height) facts.push(`${c.media.width}x${c.media.height}`);
+    if (c.media.fps) facts.push(`${c.media.fps} fps`);
+    if (c.media.codec) facts.push(c.media.codec);
+    if (c.media.bitrateKbps) facts.push(`${c.media.bitrateKbps} kbps`);
+    if (c.lastFrameAt) facts.push(`last frame ${Math.round((Date.now() - c.lastFrameAt) / 1000)}s ago`);
+    const detail = `${c.model ?? c.displayName ?? "camera"} — ${c.state}${facts.length ? " · " + facts.join(", ") : ""}`;
+    return { id: "camera", label: "Camera Relay", pass: c.state === "live" || c.state === "video_detected", detail };
+  }
+
   async runAll(): Promise<TestResult[]> {
     const [internet, dnsRes, https, auth, upload] = await Promise.all([
       this.testInternet(), this.testDns(), this.testAuroraHttps(), this.testAuthentication(),
@@ -197,6 +219,7 @@ export class Diagnostics {
       this.testNetwork(), internet, dnsRes,
       this.testMavlink(), this.testHeartbeat(), this.testDrone(),
       https, this.testWebSocket(), auth, upload, this.testForwarding(),
+      this.testCamera(),
     ];
   }
 
@@ -215,7 +238,7 @@ export class Diagnostics {
       offlineMode: s.aurora.offlineMode,
       udpPorts: s.drone.ports.map((p) => p.port),
     }, null, 2)));
-    for (const name of ["bridge.log", "connection.log", "network.log", "mavlink.log"]) {
+    for (const name of ["bridge.log", "connection.log", "network.log", "mavlink.log", "camera.log"]) {
       const p = path.join(this.logDir, name);
       if (fs.existsSync(p)) zip.addLocalFile(p);
     }
