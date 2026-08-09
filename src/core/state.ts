@@ -160,10 +160,59 @@ export interface AuroraLinkState {
   tokenStoredPlaintext: boolean;
 }
 
+/**
+ * Camera / Video Relay state — an INDEPENDENT capability. A camera failure
+ * never alters drone or aurora state (pinned by test). States mirror the
+ * binding contract; media facts are null when unknown (never 0), and `live`
+ * requires REAL evidence (frames advancing / segments PUT with 2xx).
+ */
+export type CameraState =
+  | "configured"
+  | "reachable"
+  | "video_detected"
+  | "relay_connected"
+  | "live"
+  | "camera_unreachable"
+  | "rtsp_failed"
+  | "no_frames"
+  | "relay_disconnected"
+  | "cloud_unavailable"
+  | "stopped";
+
+export interface CameraMedia {
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  codec: string | null;
+  bitrateKbps: number | null;
+}
+
+export interface CameraLinkState {
+  state: CameraState;
+  /** specific reason on a failure/honest state — never generic, may be null */
+  detail: string | null;
+  assigned: boolean;
+  orgDeviceId: number | null;
+  displayName: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  sourceProtocol: string | null;
+  /** TCP reachability of the RTSP host — null until first probed */
+  rtspReachable: boolean | null;
+  /** relay has had at least one segment accepted by the cloud (2xx) */
+  relayConnected: boolean;
+  framesReceived: number;
+  lastFrameAt: number | null;
+  media: CameraMedia;
+  /** true when an ffmpeg binary was resolved (bundled / PATH / setting) */
+  ffmpegAvailable: boolean;
+  ffmpegSource: "bundled" | "path" | "setting" | "missing";
+}
+
 export interface LogLine {
   ts: number;
   level: "info" | "warn" | "error";
-  category: "drone" | "aurora" | "system" | "network";
+  category: "drone" | "aurora" | "system" | "network" | "camera";
   message: string;
 }
 
@@ -185,10 +234,15 @@ export const EMPTY_MONITOR: PacketMonitor = {
   latencyMs: null, lastPacketAt: null,
 };
 
+export const EMPTY_CAMERA_MEDIA: CameraMedia = {
+  width: null, height: null, fps: null, codec: null, bitrateKbps: null,
+};
+
 export interface BridgeState {
   drone: DroneLinkState;
   aurora: AuroraLinkState;
   network: NetworkState;
+  camera: CameraLinkState;
 }
 
 export type StateListener = (state: BridgeState) => void;
@@ -247,6 +301,23 @@ export class BridgeStore {
         lastForwardAt: null,
         lastError: null,
         tokenStoredPlaintext: false,
+      },
+      camera: {
+        state: "stopped",
+        detail: null,
+        assigned: false,
+        orgDeviceId: null,
+        displayName: null,
+        manufacturer: null,
+        model: null,
+        sourceProtocol: null,
+        rtspReachable: null,
+        relayConnected: false,
+        framesReceived: 0,
+        lastFrameAt: null,
+        media: { ...EMPTY_CAMERA_MEDIA },
+        ffmpegAvailable: false,
+        ffmpegSource: "missing",
       },
     };
   }
