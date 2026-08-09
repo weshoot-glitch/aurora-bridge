@@ -278,6 +278,58 @@ function auroraBigLabel(a) {
   return AURORA_LABEL[a.status];
 }
 
+/* ---------- camera (independent capability) ---------- */
+const CAMERA_LAMP = {
+  live: "green", video_detected: "green", relay_connected: "yellow",
+  reachable: "yellow", configured: "yellow", stopped: "red",
+  camera_unreachable: "red", rtsp_failed: "red", no_frames: "red",
+  relay_disconnected: "red", cloud_unavailable: "red",
+};
+// Plain-language, operator-facing status — no networking terminology.
+const CAMERA_PLAIN = {
+  live: "🟢 LIVE",
+  video_detected: "Video detected",
+  relay_connected: "Relay connected",
+  reachable: "Camera reachable",
+  configured: "Camera configured",
+  stopped: "Off",
+  camera_unreachable: "Camera unreachable",
+  rtsp_failed: "Camera connection failed",
+  no_frames: "No video frames",
+  relay_disconnected: "Relay disconnected — reconnecting",
+  cloud_unavailable: "Cloud connection unavailable",
+};
+
+function renderCamera(c) {
+  if (!c) return;
+  setLamp("lamp-camera", CAMERA_LAMP[c.state] || "red");
+  const name = c.model ? (c.manufacturer ? `${c.manufacturer} ${c.model}` : c.model)
+    : c.displayName || (c.assigned ? "Camera" : "No camera assigned");
+  $("cam-model").textContent = name;
+  let plain = CAMERA_PLAIN[c.state] || c.state;
+  if (!c.assigned) plain = "No camera assigned";
+  else if (!c.ffmpegAvailable) plain = "Video relay unavailable on this computer";
+  const big = $("big-camera-status");
+  big.textContent = plain;
+  big.className = "status-big " + (CAMERA_LAMP[c.state] || "red");
+  $("cam-plain").textContent = plain + (c.detail ? ` — ${c.detail}` : "");
+
+  /* engineering diagnostics */
+  $("cam-state").textContent = c.state;
+  $("cam-assigned").textContent = c.assigned ? "YES" : "NO";
+  $("cam-ffmpeg").textContent = c.ffmpegAvailable ? `available (${c.ffmpegSource})` : `not available (${c.ffmpegSource})`;
+  $("cam-rtsp").textContent = c.rtspReachable === null ? "—" : c.rtspReachable ? "YES" : "NO";
+  $("cam-relay").textContent = c.relayConnected ? "CONNECTED" : "—";
+  $("cam-frames").textContent = fmt(c.framesReceived);
+  const m = c.media || {};
+  $("cam-res").textContent = m.width && m.height ? `${m.width}×${m.height}` : "—";
+  $("cam-fps").textContent = m.fps !== null && m.fps !== undefined ? `${m.fps} fps` : "—";
+  $("cam-codec").textContent = fmt(m.codec);
+  $("cam-bitrate").textContent = m.bitrateKbps !== null && m.bitrateKbps !== undefined ? `${m.bitrateKbps} kbps` : "—";
+  $("cam-lastframe").textContent = c.lastFrameAt
+    ? `${Math.max(0, Math.round((Date.now() - c.lastFrameAt) / 1000))}s ago` : "—";
+}
+
 function render() {
   if (!state) return;
   const d = state.drone, a = state.aurora, v = d.vehicle, n = state.network, pm = d.monitor;
@@ -433,6 +485,8 @@ function render() {
   $("v-gspd").textContent = v.groundspeedMs !== null ? `${v.groundspeedMs.toFixed(1)} m/s` : "—";
   $("v-hdg").textContent = v.headingDeg !== null ? `${Math.round(v.headingDeg)}°` : "—";
   $("v-pps").textContent = fmt(d.packetsPerSecond);
+
+  renderCamera(state.camera);
 
   $("btn-connect").hidden = d.scanning;
   $("btn-disconnect").hidden = !d.scanning;
