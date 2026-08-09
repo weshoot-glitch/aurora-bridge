@@ -40,6 +40,7 @@ export class BridgeLog {
     if (category === "drone") this.file("mavlink.log").write(text);
     if (category === "aurora") this.file("connection.log").write(text);
     if (category === "network") this.file("network.log").write(text);
+    if (category === "camera") this.file("camera.log").write(text);
     if (opts?.fileOnly) return; // full wire trace goes to disk without flooding the UI log window
     this.lines.push(line);
     if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
