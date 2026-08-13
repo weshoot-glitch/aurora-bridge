@@ -109,6 +109,15 @@ export interface ActiveClientState {
   lastProbeAt: number | null;
   /** last packet received FROM the configured remote — proof of return path */
   lastReplyAt: number | null;
+  /** total datagrams received on the client socket (any source) */
+  packetsReceived: number;
+  /** last datagram received on the client socket (any source) */
+  lastRxAt: number | null;
+  lastRxSourceIp: string | null;
+  lastRxSourcePort: number | null;
+  /** MAVLink system/component id detected on the client socket */
+  sysId: number | null;
+  compId: number | null;
 }
 
 export interface DroneLinkState {
@@ -266,6 +275,8 @@ export class BridgeStore {
           ? {
               ...activeClient, bound: false, bindError: null,
               probesSent: 0, lastProbeAt: null, lastReplyAt: null,
+              packetsReceived: 0, lastRxAt: null, lastRxSourceIp: null, lastRxSourcePort: null,
+              sysId: null, compId: null,
             }
           : null,
         activePort: null,
