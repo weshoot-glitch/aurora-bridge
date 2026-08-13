@@ -439,14 +439,21 @@ function render() {
       : ac.bound
         ? `ACTIVE — local ${ac.localPort} → ${ac.remoteHost}:${ac.remotePort}`
         : "STARTING…";
+    const ago = (t) => (t ? `${Math.max(0, Math.round((Date.now() - t) / 1000))}s ago` : null);
+    $("m-udp-remote").textContent = `${ac.remoteHost}:${ac.remotePort}`;
+    $("m-udp-local").textContent = ac.bound ? `${ac.localPort} (OPEN)` : `${ac.localPort} (NOT OPEN)`;
     $("m-udp-probes").textContent = String(ac.probesSent);
-    $("m-udp-reply").textContent = ac.lastReplyAt
-      ? `${Math.max(0, Math.round((Date.now() - ac.lastReplyAt) / 1000))}s ago`
-      : "NO REPLY YET";
+    $("m-udp-lasttx").textContent = ago(ac.lastProbeAt) || "NONE YET";
+    $("m-udp-reply").textContent = ago(ac.lastReplyAt) || "NO REPLY YET";
+    $("m-udp-lastrx").textContent = ago(ac.lastRxAt) || "NONE YET";
+    $("m-udp-rxsource").textContent = ac.lastRxSourceIp ? `${ac.lastRxSourceIp}:${ac.lastRxSourcePort}` : "—";
+    $("m-udp-sysid").textContent = ac.sysId !== null && ac.sysId !== undefined ? `${ac.sysId} / ${ac.compId ?? "—"}` : "—";
+    $("m-udp-rxcount").textContent = String(ac.packetsReceived ?? 0);
   } else {
     $("m-udp-client").textContent = "DISABLED";
-    $("m-udp-probes").textContent = "—";
-    $("m-udp-reply").textContent = "—";
+    for (const id of ["m-udp-remote", "m-udp-local", "m-udp-probes", "m-udp-lasttx", "m-udp-reply", "m-udp-lastrx", "m-udp-rxsource", "m-udp-sysid", "m-udp-rxcount"]) {
+      $(id).textContent = "—";
+    }
   }
 
   $("m-server").textContent = fmt(a.serverUrl);
