@@ -175,7 +175,12 @@ export class DroneLink {
       }
       this.store.update((s) => {
         if (s.drone.activeClient) {
-          if (fromRemote) s.drone.activeClient.lastReplyAt = Date.now();
+          const ac = s.drone.activeClient;
+          if (fromRemote) ac.lastReplyAt = Date.now();
+          ac.packetsReceived += 1;
+          ac.lastRxAt = Date.now();
+          ac.lastRxSourceIp = rinfo.address;
+          ac.lastRxSourcePort = rinfo.port;
         }
       });
       this.network?.reportSender(rinfo.address, cfg.localPort, false);
@@ -188,10 +193,13 @@ export class DroneLink {
       runtime.socket = null;
       if (!this.running || this.activeRuntime !== runtime) return; // stopped/replaced — inert
       this.activeRuntime = null;
+      // The failing port is ALWAYS the configured LOCAL port — never report the
+      // remote target port here (the bridge never binds the radio's own port).
+      const failMsg = `Local UDP bind failed on port ${cfg.localPort}: ${err.message}`;
       this.store.update((s) => {
-        if (s.drone.activeClient) { s.drone.activeClient.bound = false; s.drone.activeClient.bindError = err.message; }
+        if (s.drone.activeClient) { s.drone.activeClient.bound = false; s.drone.activeClient.bindError = failMsg; }
       });
-      this.log.log("drone", `UDP client ${cfg.localPort}: ${err.message} — will retry in 5 s.`, "warn");
+      this.log.log("drone", `${failMsg} — will retry in 5 s.`, "warn");
     });
     socket.bind(cfg.localPort, () => {
       if (!this.running || this.activeRuntime !== runtime) return; // stopped/replaced — inert
@@ -316,9 +324,9 @@ export class DroneLink {
       if (!this.running) return; // stopped — inert
       this.store.update((s) => {
         const p = s.drone.ports.find((x) => x.port === port);
-        if (p) { p.bound = false; p.bindError = err.message; }
+        if (p) { p.bound = false; p.bindError = `Local UDP bind failed on port ${port}: ${err.message}`; }
       });
-      this.log.log("drone", `UDP ${port}: ${err.message}`, "warn");
+      this.log.log("drone", `Local UDP bind failed on port ${port}: ${err.message}`, "warn");
     });
     socket.bind(port, () => {
       if (!this.running) return; // stopped before bind completed — inert
@@ -359,6 +367,16 @@ export class DroneLink {
     this.packetTimes.push(now);
     const { header } = packet;
     this.network?.reportSender(source.address, port, true);
+
+    // Diagnostics: surface the MAVLink ids seen on the active client socket.
+    if (this.activeRuntime && port === this.activeRuntime.port) {
+      this.store.update((s) => {
+        if (s.drone.activeClient) {
+          s.drone.activeClient.sysId = header.sysid;
+          s.drone.activeClient.compId = header.compid;
+        }
+      });
+    }
 
     if (header.msgid === minimal.Heartbeat.MSG_ID) {
       const hb = packet.protocol.data(packet.payload, minimal.Heartbeat);
