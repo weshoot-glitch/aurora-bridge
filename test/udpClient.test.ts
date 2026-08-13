@@ -4,7 +4,7 @@
  * that stays silent until it receives our outbound heartbeat, then streams
  * MAVLink back to the sender's address — exactly the UniRC7 contract.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import * as dgram from "dgram";
 import * as fs from "fs";
 import * as os from "os";
@@ -115,6 +115,75 @@ describe("active UDP client (UniRC7 contract)", () => {
     await sleep(1500);
     expect(bridge.store.state.drone.status).toBe("connected");
   }, 20000);
+
+  it("binds ONLY the configured local port — never the remote target port", async () => {
+    // Instrument dgram: record EVERY port the bridge's sockets bind. This is a
+    // direct proof — no reliance on EADDRINUSE semantics (SO_REUSEADDR can let
+    // a wrong second bind of the radio's port silently succeed on some OSes).
+    const boundPorts: number[] = [];
+    const realBind = dgram.Socket.prototype.bind;
+    (dgram.Socket.prototype as { bind: unknown }).bind = function (this: dgram.Socket, ...bindArgs: unknown[]) {
+      if (typeof bindArgs[0] === "number") boundPorts.push(bindArgs[0]);
+      return (realBind as (...a: unknown[]) => dgram.Socket).apply(this, bindArgs);
+    };
+
+    try {
+      radio = makeRadio(); // the radio's OWN bind of RADIO_PORT is the only one allowed
+      await radio.start();
+      bridge = makeBridge();
+      bridge.drone.start();
+      await sleep(1200);
+
+      const ac = bridge.store.state.drone.activeClient!;
+      expect(ac.bound).toBe(true);
+      expect(ac.bindError).toBeNull();
+      expect(bridge.store.state.drone.status).toBe("connected");
+      expect(ac.lastRxSourcePort).toBe(RADIO_PORT); // replies come from the radio's port…
+      expect(ac.lastRxSourceIp).toBe("127.0.0.1");
+      expect(ac.packetsReceived).toBeGreaterThan(0);
+      expect(ac.sysId).toBe(1); // detected MAVLink ids surfaced for diagnostics
+      expect(ac.compId).toBe(1);
+      // Direct bind-call proof: LOCAL_PORT was bound by the bridge, and the
+      // remote target port was bound exactly ONCE — by the fake radio itself.
+      expect(boundPorts).toContain(LOCAL_PORT);
+      expect(boundPorts.filter((p) => p === RADIO_PORT)).toHaveLength(1);
+    } finally {
+      (dgram.Socket.prototype as { bind: unknown }).bind = realBind;
+    }
+  });
+
+  it("passive listener bind failure names the LOCAL port in state", async () => {
+    const squatter = dgram.createSocket({ type: "udp4" });
+    await new Promise<void>((r) => squatter.bind(LOCAL_PORT + 1, "0.0.0.0", r));
+    try {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-udpc-"));
+      bridge = new Bridge({ dataDir: dir, ports: [LOCAL_PORT + 1], fetchFn: okFetch, activeClient: null });
+      bridge.drone.start();
+      await sleep(600);
+      const p = bridge.store.state.drone.ports.find((x) => x.port === LOCAL_PORT + 1)!;
+      expect(p.bound).toBe(false);
+      expect(p.bindError).toContain(`Local UDP bind failed on port ${LOCAL_PORT + 1}`);
+    } finally {
+      try { squatter.close(); } catch { /* noop */ }
+    }
+  });
+
+  it("reports a bind failure against the LOCAL port, never the remote target port", async () => {
+    // Occupy the local port first so the bridge's bind fails with EADDRINUSE.
+    const squatter = dgram.createSocket({ type: "udp4" });
+    await new Promise<void>((r) => squatter.bind(LOCAL_PORT, "0.0.0.0", r));
+    try {
+      bridge = makeBridge();
+      bridge.drone.start();
+      await sleep(600);
+      const ac = bridge.store.state.drone.activeClient!;
+      expect(ac.bound).toBe(false);
+      expect(ac.bindError).toContain(`Local UDP bind failed on port ${LOCAL_PORT}`);
+      expect(ac.bindError).not.toContain(String(RADIO_PORT)); // remote target port never blamed
+    } finally {
+      try { squatter.close(); } catch { /* noop */ }
+    }
+  });
 
   it("rejects a local port equal to the remote port", () => {
     const v = validateActiveClient({ enabled: true, remoteHost: "192.168.144.20", remotePort: 19856, localPort: 19856 });
