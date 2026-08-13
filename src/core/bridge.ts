@@ -44,7 +44,7 @@ export class Bridge {
   readonly network: NetworkMonitor;
   readonly dataDir: string;
   /** Running app version — used by the startup update check. */
-  readonly appVersion: string = "4.3.0";
+  readonly appVersion: string = "4.4.0";
   activeClientConfig: ActiveClientConfig;
 
   constructor(opts: BridgeOptions = {}) {
@@ -85,7 +85,11 @@ export class Bridge {
     this.drone.stop();
     this.store.update((s) => {
       s.drone.activeClient = config.enabled
-        ? { ...config, bound: false, bindError: null, probesSent: 0, lastProbeAt: null, lastReplyAt: null }
+        ? {
+            ...config, bound: false, bindError: null, probesSent: 0, lastProbeAt: null, lastReplyAt: null,
+            packetsReceived: 0, lastRxAt: null, lastRxSourceIp: null, lastRxSourcePort: null,
+            sysId: null, compId: null,
+          }
         : null;
     });
     this.drone = new DroneLink(this.store, this.log, this.ports, this.network, config);
